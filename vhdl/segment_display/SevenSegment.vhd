@@ -5,33 +5,35 @@ USE IEEE.STD_LOGIC_UNSIGNED.ALL;
 use ieee.numeric_std.all;
 
 entity Lab1 is
-    Port ( clk : in std_logic;
+    Port ( clk, sresetn : in std_logic;
            seg : out  std_logic_vector(6 downto 0);
            an: out  std_logic_vector(3 downto 0));
 end Lab1;
 
 architecture AND_4 of Lab1 is
 type STD_LOGIC_ARRAY is array(9 downto 0) of std_logic_vector(6 downto 0);
-
+type STATES is (D0, D1, D2, D3, RESET);
 signal clk_en : std_logic := '0'; --clock enable signal
 --signal led: std_logic := '0';
 signal counter : integer := 0;
 constant divisor: integer := 50000000; -- for clock 10 Hz: 100 MHZ/Divisor
 --constant divisor: std_logic_vector(27 downto 0) := x"0000002"; -- for simulation
+signal digit, digit_next: integer := 0;
 
-signal current_digit: integer := 0;
+signal state, state_next: STATES := RESET;
+ 
 constant all_on: std_logic_vector(3 downto 0) := "0000";
 
-constant digits: STD_LOGIC_ARRAY := (0 => "1111110", 
-                          1 => "0110000",
-                          2 => "1101101",
-                          3 => "1111001",
-                          4 => "0110011",
-                          5 => "1011011",
-                          6 => "1011111",
-                          7 => "1110000",
-                          8 => "1111111",
-                          9 => "1111011"
+constant digits: STD_LOGIC_ARRAY := (0 => "1000000", 
+                          1 => "1111001",
+                          2 => "0100100",
+                          3 => "0110000",
+                          4 => "0011001",
+                          5 => "0010010",
+                          6 => "0000010",
+                          7 => "1111000",
+                          8 => "0000000",
+                          9 => "0010000"
                           );
 
 begin
@@ -49,19 +51,33 @@ begin
   end if;
 end process;
 
-DISPLAY : process(clk)
+DISPLAY_REG : process(clk, clk_en, digit_next)
 begin
   if (clk'event and clk = '1') then
         if(clk_en = '1') then
-            if(current_digit = 9) then
-                current_digit <= 0;
-                else   
-                current_digit <= current_digit + 1;        
-     end if;
+            if sresetn='1' then -- define reset state
+                digit <= 0;
+            else
+                digit <= digit_next;
+            end if;
+        end if;
     end if;
-  end if;
 end process;
+
+DISPLAY_COMB : process(digit)
+begin
+        if(digit = 9) then
+            digit_next <= 0;
+        else   
+            digit_next <= digit + 1;        
+            end if;
+end process;
+
 an <= all_on;
-seg <= digits(current_digit);
+seg <= digits(digit);
 
 end AND_4;
+
+
+
+             
