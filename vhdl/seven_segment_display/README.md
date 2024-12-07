@@ -1,3 +1,1 @@
-This version takes the switches 0 to 9 as a signed digital input and 
-represents the decimal signed number on a seven segment display, 
-fractional numbers are not yet implemented 
+This version takes the switches 0 to 15 of the BASYS-3 Board in the format of the 16-Bit temperature register of the DS18B20 (Datasheet page 6). Central Button is Reset Button, Button Up is the READY Signal from the state machine. 
