@@ -5,17 +5,22 @@ USE IEEE.STD_LOGIC_UNSIGNED.ALL;
 use ieee.numeric_std.all;
 
 entity seven_segment_display is
+	generic(NUM_SENSORS : integer := 3);
     Port ( clk,
         tempval_ready, 
         sresetn : in std_logic;
-        tempval_in : in std_logic_vector(15 downto 0); --temperature input
+        sensor_address: in std_logic_vector(1 downto 0);
+        sensor_select: in std_logic_vector(1 downto 0);
+        tempval_in : in std_logic_vector(11 downto 0); --temperature input
         seven_segments_out : out  std_logic_vector(6 downto 0); --7-segments for display, 0=on, 1=off
         decimal_point_out : out std_logic; --decimal point for display, 0=on, 1=off
         digit_enable_out: out  std_logic_vector(3 downto 0)); --anodes for activating each digit. 0=on, 1=off
 end seven_segment_display;
 
 architecture behavioural of seven_segment_display is
-type STD_LOGIC_VECTOR_ARRAY is array(9 downto 0) of std_logic_vector(6 downto 0);
+type STD_LOGIC_VECTOR_ARRAY_10 is array(9 downto 0) of std_logic_vector(6 downto 0);
+type TEMPVAL_ARRAY is array(NUM_SENSORS-1 downto 0) of std_logic_vector(11 downto 0);
+type INTEGER_ARRAY is array (0 to NUM_SENSORS-1) of integer;
 type STATES is (D0, D1, D2, D3, RESET);
 
 --clock stuff:
@@ -26,9 +31,9 @@ signal counter : integer range 0 to divisor := 0;
 --constant divisor: std_logic_vector(27 downto 0) := x"0000002"; -- for simulation
 
 
-signal tempval_reg, tempval_reg_next: std_logic_vector(15 downto 0) := (others => '0');
-signal whole_part: integer range -128 to 127 := 0;
-signal fractional_part: integer range 0 to 99 := 0;
+signal tempval_reg, tempval_reg_next: TEMPVAL_ARRAY := (others => (others => '0'));
+signal whole_part: INTEGER_ARRAY := (others => 0);
+signal fractional_part: INTEGER_ARRAY := (others => 0);
 
 
 signal state, state_next: STATES := RESET;
@@ -39,7 +44,7 @@ signal digit_en, digit_en_next: std_logic_vector(3 downto 0) := (others => '1');
 signal digits_out, digits_out_next: std_logic_vector(6 downto 0) := (others => '1'); 
 signal dec_point_reg, dec_point_reg_next: std_logic := '1';
 
-constant digits: STD_LOGIC_VECTOR_ARRAY := (0 => "1000000", 
+constant digits: STD_LOGIC_VECTOR_ARRAY_10 := (0 => "1000000", 
                                             1 => "1111001",
                                             2 => "0100100",
                                             3 => "0110000",
@@ -66,22 +71,27 @@ begin
   end if;
 end process;
 
-INPUT_NUMBER : process(tempval_in, tempval_ready)
-begin
-    if tempval_ready='1' then 
-        tempval_reg_next <= tempval_in;
-    else
+    INPUT_NUMBER : process(tempval_in, tempval_ready, sensor_address)
+    begin
+        --default values:
         tempval_reg_next <= tempval_reg;
-    end if; 
-end process;
+        --if the temperature value is ready, store it in the corresponding register
+        if tempval_ready='1' then 
+            tempval_reg_next(to_integer(unsigned(sensor_address))) <= tempval_in; 
+        end if;
+    end process;
 
 CALC_WHOLE_FRACTIONAL : process(tempval_reg)
 begin
 -- bit 11 contains the sign, so the bits 11 to 4 can be interpreted as a signed integer
 -- the bits 3 to 0 contain the fractional part
 --default:
-    whole_part <= to_integer(signed(tempval_reg(11 downto 4)));
-    fractional_part <= to_integer(unsigned(tempval_reg(3 downto 0))) * 6; --resolution of ~0.0625 °C
+
+    for i in 0 to NUM_SENSORS-1 loop
+        whole_part(i) <= to_integer(signed(tempval_reg(i)(11 downto 4)));
+        fractional_part(i) <= to_integer(unsigned(tempval_reg(i)(3 downto 0))) * 6;
+    end loop;
+     --resolution of ~0.0625 °C
     --for negative numbers, the fractional part is still positive, so it is added to the whole part
     --that means, if the fractional part is greater than zero, the whole part has to be incremented by one and the fractional part is inverted (100 - fractional part)
     --for example: 1111 1111 0101 1110 has -11 as whole part and 14*6 = 84 (0,84) as fractional part:
@@ -89,14 +99,14 @@ begin
     --whole part: -11 + 1 = -10 
     --fractional part:  (1 - 0,84) = 0,16
     --output : -10,16
-    
-    if tempval_reg(11) ='1' then -- negative flag
-        if unsigned(tempval_reg(3 downto 0)) > 0 then --fractional part is greater than zero
-            whole_part <= to_integer(signed(tempval_reg(11 downto 4))) + 1;
-            fractional_part <= 100 - to_integer(unsigned(tempval_reg(3 downto 0))) * 6; 
+    for i in 0 to NUM_SENSORS-1 loop
+        if tempval_reg(i)(11) ='1' then -- negative flag
+            if unsigned(tempval_reg(i)(3 downto 0)) > 0 then --fractional part is greater than zero
+                whole_part(i) <= to_integer(signed(tempval_reg(i)(11 downto 4))) + 1;
+                fractional_part(i) <= 100 - to_integer(unsigned(tempval_reg(i)(3 downto 0))) * 6; 
+            end if;
         end if;
-    end if;
-
+    end loop;
 end process;
 
 
@@ -110,7 +120,7 @@ begin
                 digit_en <= (others => '1'); -- all digits off
                 digits_out <= (others => '1'); -- all segments off
                 dec_point_reg <= '1';
-                tempval_reg <= (others => '0');
+                tempval_reg <= (others => (others => '0'));
             else
                 state <= state_next;
                 Q <= Q_next;
@@ -123,7 +133,7 @@ begin
     end if;
 end process;
 
-DISPLAY_COMB : process(state, Q, whole_part, fractional_part, digits_out, tempval_reg)
+DISPLAY_COMB : process(state, Q, whole_part, fractional_part, digits_out, tempval_reg, sensor_select)
 begin
         --default values
         state_next <= state;
@@ -140,10 +150,10 @@ begin
                 end if;
             when D0 =>
                 digit_en_next <= "1110";
-                digits_out_next <= digits(abs(fractional_part) / 10 mod 10);
+                digits_out_next <= digits(abs(fractional_part(to_integer(unsigned(sensor_select)))) / 10 mod 10);
                 --rounding:
-                if (fractional_part mod 10) > 5 then
-                    digits_out_next <= digits((abs(fractional_part) / 10 mod 10) + 1);
+                if (fractional_part(to_integer(unsigned(sensor_select))) mod 10) > 5 then
+                    digits_out_next <= digits((abs(fractional_part(to_integer(unsigned(sensor_select)))) / 10 mod 10) + 1);
                 end if;
                 if Q = digit_period then
                     state_next <= D1;
@@ -151,7 +161,7 @@ begin
                 end if;
             when D1 =>
                 digit_en_next <= "1101";
-                digits_out_next <= digits(abs(whole_part) mod 10);
+                digits_out_next <= digits(abs(whole_part(to_integer(unsigned(sensor_select)))) mod 10);
                 dec_point_reg_next <= '0';
                 if Q = digit_period then
                     state_next <= D2;
@@ -160,17 +170,17 @@ begin
                 end if;
             when D2 =>
                 digit_en_next <= "1011";
-                digits_out_next <= digits(abs(whole_part) / 10 mod 10);
+                digits_out_next <= digits(abs(whole_part(to_integer(unsigned(sensor_select)))) / 10 mod 10);
                 if Q = digit_period then
                     state_next <= D3;
                     Q_next <= 0;
                 end if;            
             when D3 =>
                 digit_en_next <= "0111";
-                if tempval_reg(11) ='1' then -- negative flag
+                if tempval_reg(to_integer(unsigned(sensor_select)))(11) ='1' then -- negative flag
                     digits_out_next <= minus;
                 else
-                    digits_out_next <= digits(abs(whole_part) / 100 mod 10);
+                    digits_out_next <= digits(abs(whole_part(to_integer(unsigned(sensor_select)))) / 100 mod 10);
                 end if;
                 if Q = digit_period then
                     state_next <= RESET;
