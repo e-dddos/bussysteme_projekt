@@ -23,7 +23,7 @@ entity vga is
 end vga;
 
 architecture Behavioral of vga is
-    --display resolution constants
+    --display resolution constants 640x480@60Hz
     constant H_DISPLAY : integer := 640;
     constant H_FRONT_PORCH : integer := 16;
     constant H_SYNC_PULSE : integer := 96;
@@ -70,7 +70,7 @@ begin
         end if; 
     end process;
 
-    pix_clk_gen: process(clk_2, sresetn)
+    pix_clk_gen: process(clk_2, sresetn) --for 640x480@60Hz pixel clock is 25.175 MHz. 25 MHz is close enough
     begin 
         if (sresetn = '1') then 
             pix_clock <= '0';
@@ -79,7 +79,7 @@ begin
         end if;
     end process;
 
-
+    --counter process
     counter_reg: process(clk, sresetn)
     begin
         if rising_edge(clk) then
@@ -205,6 +205,7 @@ begin
                 vgaGreen_reg_next <= X"0";
                 vgaBlue_reg_next <= X"0";
             end if;
+        --print numbers:
         -- I 
         if (h_cnt >= H_DISPLAY/3/2 and h_cnt < H_DISPLAY/3/2 + 3 and v_cnt >= 10 and v_cnt < 25) or
         -- II
@@ -223,7 +224,7 @@ begin
         end if;
     end process;
 
-    hsync_vsync: process(pix_clock, sresetn, h_cnt, v_cnt)
+    pixel_pos: process(pix_clock, sresetn, h_cnt, v_cnt)
     begin
         if (sresetn = '1') then
             h_cnt <= to_unsigned(0, h_cnt'length);
@@ -241,9 +242,11 @@ begin
             end if;
         end if;
     end process;
-    
+
+    --sync signals
     Hsync <= '0' when h_cnt >= (H_DISPLAY + H_FRONT_PORCH) and h_cnt < (H_DISPLAY + H_FRONT_PORCH + H_SYNC_PULSE) else '1';
     Vsync <= '0' when v_cnt >= (V_DISPLAY + V_FRONT_PORCH) and v_cnt < (V_DISPLAY + V_FRONT_PORCH + V_SYNC_PULSE) else '1';
+    --rgb output
     vgaRed <= vgaRed_reg;
     vgaGreen <= vgaGreen_reg;
     vgaBlue <= vgaBlue_reg;
