@@ -247,18 +247,18 @@ begin
     -- horizontal and vertical counter, h_cnt and v_cnt represent the current pixel position on the screen
     h_v_cnt: process(pix_clock, sresetn, h_cnt, v_cnt)
     begin
-        if (sresetn = '1') then
+        if (sresetn = '1') then --reset
             h_cnt <= to_unsigned(0, h_cnt'length);
             v_cnt <= to_unsigned(0, v_cnt'length);
-        elsif rising_edge(pix_clock) then
-            if (h_cnt < H_TOTAL - 1) then
-                h_cnt <= h_cnt + 1;
-            else 
-                h_cnt <= to_unsigned(0, h_cnt'length);
-                if (v_cnt < V_TOTAL - 1) then 
-                    v_cnt <= v_cnt + 1;
-                else 
-                    v_cnt <= to_unsigned(0, v_cnt'length);
+        elsif rising_edge(pix_clock) then 
+            if (h_cnt < H_TOTAL - 1) then                   --if not at the end of the line
+                h_cnt <= h_cnt + 1;                         --increment horizontal counter
+            else                                            --if at the end of the line
+                h_cnt <= to_unsigned(0, h_cnt'length);      --reset horizontal counter
+                if (v_cnt < V_TOTAL - 1) then               --if not at the end of the screen 
+                    v_cnt <= v_cnt + 1;                     --increment vertical counter
+                else                                        --if at the end of the screen
+                    v_cnt <= to_unsigned(0, v_cnt'length);  --reset vertical counter 
                 end if;
             end if;
         end if;
