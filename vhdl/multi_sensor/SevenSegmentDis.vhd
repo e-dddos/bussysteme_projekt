@@ -124,23 +124,23 @@ begin
     state_next <= state;
     case state is
         when RESET => -- all digits off
-            if Q = DIGIT_PERIOD then
+            if Q = DIGIT_PERIOD - 1 then
                 state_next <= D0;
             end if;
         when D0 => -- digit 0 (rightmost digit)
-            if Q = DIGIT_PERIOD then
+            if Q = DIGIT_PERIOD - 1 then
                 state_next <= D1;
             end if;
         when D1 => -- digit 1
-            if Q = DIGIT_PERIOD then
+            if Q = DIGIT_PERIOD - 1 then
                 state_next <= D2;
             end if;
         when D2 => -- digit 2
-            if Q = DIGIT_PERIOD then
+            if Q = DIGIT_PERIOD - 1 then
                 state_next <= D3;
             end if;            
         when D3 => -- digit 3 (leftmost digit)
-            if Q = DIGIT_PERIOD then
+            if Q = DIGIT_PERIOD - 1 then
                 state_next <= D0;
             end if;
     end case;
