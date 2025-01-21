@@ -60,22 +60,25 @@ architecture Behavioral of vga is
     -- period in seconds after which the display section for a sensor is turned off if no data is received
     constant TURN_OFF_DELAY_SEC  : integer := 5; 
 
-    signal pix_clock : std_logic := '0';
-    signal clk_2     : std_logic := '0';
-    signal cnt1, cnt1_next, cnt2, cnt2_next, cnt3, cnt3_next : unsigned(39 downto 0) := (others => '0');
+    signal pix_clock : std_logic := '0'; -- 100 MHz / 4 = 25 MHz
+    signal clk_2     : std_logic := '0'; -- 100 MHz / 2 = 50 MHz
+    signal cnt1, cnt1_next, cnt2, cnt2_next, cnt3, cnt3_next : unsigned(39 downto 0) := (others => '0'); -- timeout counters to turn off display section if no data is received in TURN_OFF_DELAY_SEC seconds
     
-    signal h_cnt : unsigned(9 downto 0) := (others => '0');
-    signal v_cnt : unsigned(9 downto 0) := (others => '0');
+    signal h_cnt : unsigned(9 downto 0) := (others => '0'); -- horizontal counter (x position of the pixel)
+    signal v_cnt : unsigned(9 downto 0) := (others => '0'); -- vertical counter (y position of the pixel)
+    
+    -- 4-bit color values for the VGA output
     signal vgaRed_reg,   vgaRed_reg_next   : std_logic_vector(3 downto 0) := (others => '0');
     signal vgaGreen_reg, vgaGreen_reg_next : std_logic_vector(3 downto 0) := (others => '0');
     signal vgaBlue_reg,  vgaBlue_reg_next  : std_logic_vector(3 downto 0) := (others => '0');
 
-
+    -- registers to store the temperature values from each sensor
     signal tempval1_reg, tempval1_reg_next: std_logic_vector(15 downto 0) := (others => '0');
     signal tempval2_reg, tempval2_reg_next: std_logic_vector(15 downto 0) := (others => '0');
     signal tempval3_reg, tempval3_reg_next: std_logic_vector(15 downto 0) := (others => '0');
-    signal temperature_out, temp1, temp2, temp3: integer range -128 to 255 := -100;
-    constant TEMP_OFFSET : integer := 96; -- for demo
+    signal temperature_out, -- temperature value to be displayed
+    temp1, temp2, temp3: integer range -128 to 255 := -100; --
+    constant TEMP_OFFSET : integer := 96; -- for demo, see convert_temp process below
 begin
 
     --Divide clock two times to get 100 Mhz/2/2 = 25MHz
@@ -84,7 +87,7 @@ begin
         if (sresetn = '1') then 
             clk_2 <= '0';
         elsif rising_edge(clk) then 
-            clk_2 <= not clk_2;
+            clk_2 <= not clk_2; -- 50 MHz
         end if; 
     end process;
 
@@ -93,7 +96,7 @@ begin
         if (sresetn = '1') then 
             pix_clock <= '0';
         elsif rising_edge(clk_2) then
-            pix_clock <= not pix_clock;
+            pix_clock <= not pix_clock; -- 25 MHz
         end if;
     end process;
 
@@ -139,6 +142,16 @@ begin
                     null;
             end case;
         end if;
+        --if no value is received in TURN_OFF_DELAY_SEC seconds, turn off the corresponding display section
+        if cnt1 = TURN_OFF_DELAY_SEC * 100000000 then
+            tempval1_reg_next <= std_logic_vector(to_unsigned(0, 16));
+        end if;
+        if cnt2 = TURN_OFF_DELAY_SEC * 100000000 then
+            tempval2_reg_next <= std_logic_vector(to_unsigned(0, 16));
+        end if;
+        if cnt3 = TURN_OFF_DELAY_SEC * 100000000 then
+            tempval3_reg_next <= std_logic_vector(to_unsigned(0, 16));
+        end if;
     end process;
 
     convert_temp : process(tempval1_reg, tempval2_reg, tempval3_reg)
@@ -169,60 +182,50 @@ begin
             vgaGreen_reg <= vgaGreen_reg_next;
             vgaBlue_reg  <= vgaBlue_reg_next;
         end if;
-        --if no value is received in TURN_OFF_DELAY_SEC seconds, turn off the corresponding display section
-        if cnt1 = TURN_OFF_DELAY_SEC * 100000000 then
-            tempval1_reg <= std_logic_vector(to_unsigned(0, 16));
-        end if;
-        if cnt2 = TURN_OFF_DELAY_SEC * 100000000 then
-            tempval2_reg <= std_logic_vector(to_unsigned(0, 16));
-        end if;
-        if cnt3 = TURN_OFF_DELAY_SEC * 100000000 then
-            tempval3_reg <= std_logic_vector(to_unsigned(0, 16));
-        end if;
     end process;
     
     -- Output the temperature value as color, upto 3 sensors
     comb_process: process(h_cnt, v_cnt)
     begin
-        if (h_cnt < H_DISPLAY and v_cnt < V_DISPLAY) then
-                --lower than -16
-                if (h_cnt < H_DISPLAY/3) then
+        if (h_cnt < H_DISPLAY and v_cnt < V_DISPLAY) then --visible display area
+                if (h_cnt < H_DISPLAY/3) then       --first third of the screen for sensor 1
                     temperature_out <= temp1;
-                elsif (h_cnt < 2*H_DISPLAY/3) then
+                elsif (h_cnt < 2*H_DISPLAY/3) then  --second third of the screen for sensor 2
                     temperature_out <= temp2;
-                else
-                    temperature_out <= temp3;
+                else                                --last third of the screen for sensor 3
+                    temperature_out <= temp3; 
                 end if;
-                if (temperature_out < -60) then --no valid temperature data
+                if (temperature_out < -60) then     --no valid temperature data, display black
                     vgaRed_reg_next   <= X"0";
                     vgaGreen_reg_next <= X"0";
                     vgaBlue_reg_next  <= X"0";
-                elsif (temperature_out < -16) then 
+                elsif (temperature_out < -16) then  --lower than -16, display blue 00F
                     vgaRed_reg_next   <= X"0";
                     vgaGreen_reg_next <= X"0";
                     vgaBlue_reg_next  <= X"F";
-                elsif (temperature_out >= 32) then --higher than 32 
+                elsif (temperature_out >= 32) then --higher than 32, display red F00
                     vgaRed_reg_next   <= X"F";
                     vgaGreen_reg_next <= X"0";
                     vgaBlue_reg_next  <= X"0";
-                elsif (temperature_out >= -16 and temperature_out <= -1) then -- [-16, -1]
+                elsif (temperature_out >= -16 and temperature_out <= -1) then -- [-16, -1] display blue to green-blue 00F to 0FF
                     vgaRed_reg_next   <= X"0";
                     vgaGreen_reg_next <= std_logic_vector(to_unsigned(temperature_out + 16, 4));
                     vgaBlue_reg_next  <= X"F";
-                elsif (temperature_out >= 16 and temperature_out < 32) then -- [16, 31]
+                elsif (temperature_out >= 16 and temperature_out < 32) then -- [16, 31] display red-green to red FF0 to F00
                     vgaRed_reg_next   <= X"F";
                     vgaGreen_reg_next <= std_logic_vector(to_unsigned(15 - (temperature_out - 16), 4));
                     vgaBlue_reg_next  <= X"0";
                 else
-                    vgaRed_reg_next   <= std_logic_vector(to_unsigned(temperature_out, 4)); -- [0, 15]
+                    vgaRed_reg_next   <= std_logic_vector(to_unsigned(temperature_out, 4)); -- [0, 15] display green-blue to green-red (yellow) 0FF to FF0
                     vgaGreen_reg_next <= X"F";
                     vgaBlue_reg_next  <= std_logic_vector(to_unsigned(15 - temperature_out, 4));
                 end if;
-            else -- blanking
+            else -- blanking time
                 vgaRed_reg_next   <= X"0";
                 vgaGreen_reg_next <= X"0";
                 vgaBlue_reg_next  <= X"0";
             end if;
+        --display numbers and separator lines:
         -- I 
         if (h_cnt >= H_DISPLAY/3/2 and h_cnt < H_DISPLAY/3/2 + 3 and v_cnt >= 10 and v_cnt < 25) or
         -- II
@@ -241,8 +244,8 @@ begin
         end if;
     end process;
     
-    -- generate hsync and vsync signals
-    hsync_vsync: process(pix_clock, sresetn, h_cnt, v_cnt)
+    -- horizontal and vertical counter, h_cnt and v_cnt represent the current pixel position on the screen
+    h_v_cnt: process(pix_clock, sresetn, h_cnt, v_cnt)
     begin
         if (sresetn = '1') then
             h_cnt <= to_unsigned(0, h_cnt'length);
